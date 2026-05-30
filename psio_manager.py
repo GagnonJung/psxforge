@@ -950,15 +950,24 @@ class App(tk.Tk):
             import io as _io, ssl
             src = src.strip().strip('"').strip("'")
             if src.startswith("http"):
+                # 방법 1: requests 라이브러리 (설치된 경우 우선 사용)
+                try:
+                    import requests
+                    r = requests.get(src, timeout=15, verify=False,
+                                     headers={"User-Agent": "Mozilla/5.0"})
+                    r.raise_for_status()
+                    return Image.open(_io.BytesIO(r.content)).copy()
+                except ImportError:
+                    pass
+                # 방법 2: urllib (SSL 검증 비활성화)
                 req = urllib.request.Request(src, headers={
                     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                                   "AppleWebKit/537.36 Chrome/120.0 Safari/537.36",
-                    "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
                 })
-                ctx = ssl.create_default_context()
+                ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
                 ctx.check_hostname = False
                 ctx.verify_mode = ssl.CERT_NONE
-                with urllib.request.urlopen(req, timeout=10, context=ctx) as r:
+                with urllib.request.urlopen(req, timeout=15, context=ctx) as r:
                     data = r.read()
                 return Image.open(_io.BytesIO(data)).copy()
             return Image.open(src)
