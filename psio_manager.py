@@ -302,11 +302,12 @@ class App(tk.Tk):
         self.lbl_count.pack(anchor="w", pady=(2,6), padx=4)
 
         for txt, cmd, color in [
-            ("전체 선택",          self._sel_all,       PANEL),
-            ("선택 해제",          self._desel_all,     PANEL),
-            ("⬇ 썸네일 다운로드",  self._dl_thumbs,     PANEL),
-            ("🖼 썸네일 직접 생성", self._make_thumb,    PANEL),
-            ("🍀 Feeling Lucky",   self._feeling_lucky, "#E8F8EF"),
+            ("전체 선택",          self._sel_all,        PANEL),
+            ("선택 해제",          self._desel_all,      PANEL),
+            ("⬇ 썸네일 다운로드",  self._dl_thumbs,      PANEL),
+            ("🖼 썸네일 직접 생성", self._make_thumb,     PANEL),
+            ("★ 즐겨찾기 등록",    self._fav_selected,   "#FFFBEA"),
+            ("🍀 Feeling Lucky",   self._feeling_lucky,  "#E8F8EF"),
         ]:
             tk.Button(sidebar, text=txt, command=cmd,
                       font=("Segoe UI",9), bg=color, relief="solid",
@@ -1019,6 +1020,20 @@ class App(tk.Tk):
 
 
     # ── 즐겨찾기 저장/로드 ──────────────────────────────────
+
+    def _fav_selected(self):
+        """선택된 게임을 모두 즐겨찾기 등록."""
+        if not self.selected:
+            messagebox.showinfo("즐겨찾기", "먼저 게임을 선택하세요.")
+            return
+        count = 0
+        for g in self.all_games:
+            if g['row_id'] in self.selected and not g['fav']:
+                g['fav'] = True
+                count += 1
+        self._save_favs()
+        self._refresh()
+        self._st(f"즐겨찾기 {count}개 등록됨.")
 
     def _fav_db_path(self):
         src = self.src_folder.get()
