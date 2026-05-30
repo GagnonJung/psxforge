@@ -47,13 +47,15 @@ REGION_RE = re.compile(
 )
 
 def get_flag(name: str) -> str:
-    m = REGION_RE.search(name)
-    if m:
-        region = m.group(1).title()
-        # title()로 첫글자만 대문자 → 매핑 키와 맞춤
-        for k in FLAG_MAP:
-            if k.lower() == region.lower():
-                return FLAG_MAP[k]
+    try:
+        m = REGION_RE.search(name)
+        if m:
+            region = m.group(1)
+            for k in FLAG_MAP:
+                if k.lower() == region.lower():
+                    return FLAG_MAP[k]
+    except Exception:
+        pass
     return '🌐'
 
 GENRE_MAP = {
@@ -482,6 +484,12 @@ class App(tk.Tk):
 
     def _scan_done(self, games):
         self.all_games = games
+        # flag 필드 누락 방어
+        for g in self.all_games:
+            if 'flag' not in g:
+                g['flag'] = get_flag(g.get('name', ''))
+            if 'fav' not in g:
+                g['fav'] = False
         self._bar_show(self.scan_bar, False)
         self._load_genres()
         self._load_favs()
@@ -554,7 +562,7 @@ class App(tk.Tk):
             else:
                 tag = "odd" if i % 2 else "even"
             self.tree.insert("", "end", iid=rid, tags=(tag,),
-                             values=(fav, g['flag'], chk, display, g['genre'],
+                             values=(fav, g.get('flag','🌐'), chk, display, g['genre'],
                                      g['serial'], g['disc_index'], g['size_str'], thumb))
         self.lbl_count.config(text=f"게임 {len(self.filtered)}개")
 
