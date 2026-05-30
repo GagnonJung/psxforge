@@ -79,19 +79,27 @@ def guess_genre(name):
 
 def get_serial(bin_path):
     try:
-        with open(bin_path,'rb') as f:
+        with open(bin_path, 'rb') as f:
+            # PSX 시리얼은 보통 앞 16MB 안에 있음
+            FAST_LIMIT = 16 * 1024 * 1024
+            pos = 0
             while True:
-                chunk = f.read(1024*1024)
-                if not chunk: break
+                chunk = f.read(1024 * 1024)
+                if not chunk:
+                    break
                 t = chunk.decode('latin-1', errors='replace')
                 m = SERIAL_REGEX.search(t)
                 if m:
-                    raw = t[m.start():m.start()+11]
-                    s = raw.replace('.','').replace('-','_',1).replace('-','')
-                    for k,v in SERIAL_EX.items():
-                        if k in s: s=s.replace(k,v)
-                    return s[:8]+'.'+s[8:10]
-    except: pass
+                    raw = t[m.start():m.start() + 11]
+                    s = raw.replace('.', '').replace('-', '_', 1).replace('-', '')
+                    for k, v in SERIAL_EX.items():
+                        if k in s: s = s.replace(k, v)
+                    return s[:8] + '.' + s[8:10]
+                pos += len(chunk)
+                if pos >= FAST_LIMIT:
+                    break
+    except:
+        pass
     return None
 
 def folder_size(path):
@@ -302,12 +310,13 @@ class App(tk.Tk):
         self.lbl_count.pack(anchor="w", pady=(2,6), padx=4)
 
         for txt, cmd, color in [
-            ("전체 선택",          self._sel_all,        PANEL),
-            ("선택 해제",          self._desel_all,      PANEL),
-            ("⬇ 썸네일 다운로드",  self._dl_thumbs,      PANEL),
-            ("🖼 썸네일 직접 생성", self._make_thumb,     PANEL),
-            ("★ 즐겨찾기 등록",    self._fav_selected,   "#FFFBEA"),
-            ("🍀 Feeling Lucky",   self._feeling_lucky,  "#E8F8EF"),
+            ("전체 선택",          self._sel_all,         PANEL),
+            ("선택 해제",          self._desel_all,       PANEL),
+            ("★ 즐겨찾기만 선택",  self._sel_favs,        "#FFFBEA"),
+            ("⬇ 썸네일 다운로드",  self._dl_thumbs,       PANEL),
+            ("🖼 썸네일 직접 생성", self._make_thumb,      PANEL),
+            ("★ 즐겨찾기 등록",    self._fav_selected,    "#FFFBEA"),
+            ("🍀 Feeling Lucky",   self._feeling_lucky,   "#E8F8EF"),
         ]:
             tk.Button(sidebar, text=txt, command=cmd,
                       font=("Segoe UI",9), bg=color, relief="solid",
@@ -624,6 +633,12 @@ class App(tk.Tk):
     def _sel_all(self):
         self.selected = {g['row_id'] for g in self.filtered}
         self._refresh(); self._update_sel()
+
+    def _sel_favs(self):
+        """즐겨찾기 게임만 선택."""
+        self.selected = {g['row_id'] for g in self.filtered if g['fav']}
+        self._refresh(); self._update_sel()
+        self._st(f"즐겨찾기 {len(self.selected)}개 선택됨.")
 
     def _desel_all(self):
         self.selected.clear()
