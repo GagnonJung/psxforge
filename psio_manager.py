@@ -199,8 +199,9 @@ class App(tk.Tk):
         self.search_var  = tk.StringVar()
         self.genre_var   = tk.StringVar(value="전체")
         self.thumb_var   = tk.StringVar(value="전체")
-        self.ow_all      = tk.BooleanVar(value=False)
-        self.region_var  = tk.StringVar(value="전체")
+        self.ow_all        = tk.BooleanVar(value=False)
+        self.skip_existing = tk.BooleanVar(value=False)
+        self.region_var    = tk.StringVar(value="전체")
 
         self.all_games:      list[dict] = []
         self.filtered:       list[dict] = []
@@ -398,11 +399,15 @@ class App(tk.Tk):
                                   height=5, highlightthickness=0)
         self.sel_box.pack(fill="both", expand=True)
 
-        # 덮어쓰기 옵션
+        # 전송 옵션
+        tk.Checkbutton(inner, text="이미 있는 게임 제외",
+                       variable=self.skip_existing, bg=PANEL, fg="#555",
+                       font=("Segoe UI",9), anchor="w").pack(
+                       fill="x", pady=(8,0))
         tk.Checkbutton(inner, text="중복 시 묻지 않고 덮어쓰기",
                        variable=self.ow_all, bg=PANEL, fg="#555",
                        font=("Segoe UI",9), anchor="w").pack(
-                       fill="x", pady=(8,0))
+                       fill="x", pady=(2,0))
 
         # 복사 버튼
         self.btn_copy = tk.Button(inner, text="SD카드로 복사 →",
@@ -494,6 +499,10 @@ class App(tk.Tk):
         self._load_genres()
         self._load_favs()
         self._filter()
+        # 스캔 완료 후 대상 폴더 이미 설정돼 있으면 동기화
+        dst = self.dst_folder.get()
+        if dst and os.path.isdir(dst):
+            self._sync_existing(dst)
         self._st(f"{len(games)}개 게임 로드됨.")
 
     def _open_dst(self):
@@ -641,8 +650,28 @@ class App(tk.Tk):
         self.lbl_free.config(text=fmt(u.free))
         self.pv.set(pct)
         self.lbl_pct.config(text=f"{pct:.0f}%")
+        # 대상 폴더에 이미 있는 게임 자동 체크
+        self._sync_existing(dst)
         has = bool(self.selected) and bool(self.dst_folder.get())
         self.btn_copy.config(state="normal" if has else "disabled")
+
+    def _sync_existing(self, dst: str):
+        """대상 폴더에 이미 존재하는 게임을 자동으로 선택 표시."""
+        if not self.all_games:
+            return
+        try:
+            existing = set(os.listdir(dst))
+        except Exception:
+            return
+        changed = False
+        for g in self.all_games:
+            if g['name'] in existing:
+                if g['row_id'] not in self.selected:
+                    self.selected.add(g['row_id'])
+                    changed = True
+        if changed:
+            self._refresh()
+            self._update_sel()
 
     # ── 썸네일 다운로드 ──────────────────────────────────────
 
@@ -681,6 +710,20 @@ class App(tk.Tk):
 
         sel = [g for g in self.all_games if g['row_id'] in self.selected]
         if not sel: return
+
+        # 이미 있는 게임 제외 옵션
+        if self.skip_existing.get():
+            try:
+                existing = set(os.listdir(dst))
+            except Exception:
+                existing = set()
+            skipped_names = {g['name'] for g in sel if g['name'] in existing}
+            sel = [g for g in sel if g['name'] not in skipped_names]
+            if skipped_names:
+                self._st(f"이미 있는 게임 {len(skipped_names)}개 제외됨")
+            if not sel:
+                messagebox.showinfo("전송", "전송할 게임이 없습니다.\n(모두 대상 폴더에 이미 존재)")
+                return
 
         total_b = sum(g['size'] for g in sel)
         free    = shutil.disk_usage(dst).free
