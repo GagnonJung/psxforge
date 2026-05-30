@@ -910,7 +910,7 @@ class App(tk.Tk):
         g = sel[0]
         win = tk.Toplevel(self)
         win.title(f"썸네일 생성 — {g['name'][:40]}")
-        win.geometry("420x260")
+        win.geometry("440x520")
         win.resizable(False, False)
         win.grab_set()
         win.configure(bg=PANEL)
@@ -924,18 +924,21 @@ class App(tk.Tk):
         row = tk.Frame(win, bg=PANEL)
         row.pack(fill="x", padx=20)
         src_var = tk.StringVar()
-        tk.Entry(row, textvariable=src_var, font=("Segoe UI", 10),
-                 relief="solid", bd=1).pack(side="left", fill="x",
-                                             expand=True, ipady=4)
+        entry = tk.Entry(row, textvariable=src_var, font=("Segoe UI", 10),
+                 relief="solid", bd=1)
+        entry.pack(side="left", fill="x", expand=True, ipady=4)
+
         def browse():
             p = filedialog.askopenfilename(
                 title="이미지 선택",
                 filetypes=[("이미지", "*.png *.jpg *.jpeg *.bmp *.webp *.gif"),
-                           ("모든 파일", "*.*")])
+                           ("모든 파일", "*.*")],
+                parent=win)
             if p: src_var.set(p)
+
         tk.Button(row, text="파일", command=browse,
                   font=("Segoe UI", 10), bg="#F0EFEB",
-                  relief="flat", padx=8).pack(side="left", padx=(4,0))
+                  relief="flat", padx=8, takefocus=0).pack(side="left", padx=(4,0))
 
         # 크기 고정 안내
         tk.Label(win, text="출력 크기: 80x84 px  /  24-bit BMP  (PSIO 규격 고정)",
@@ -993,10 +996,10 @@ class App(tk.Tk):
                 preview_lbl.config(text=f"오류: {e}", image="")
         src_var.trace_add("write", lambda *_: self.after(400, preview))
 
-        btn_frame = tk.Frame(win, bg=PANEL)
-        btn_frame.pack(pady=4)
+        # 변환된 이미지 보관 (저장 버튼에서 사용)
+        converted = {"img": None}
 
-        def convert():
+        def convert_preview():
             src = src_var.get().strip()
             if not src:
                 messagebox.showwarning("입력 없음", "파일 또는 URL을 입력하세요.",
@@ -1004,10 +1007,26 @@ class App(tk.Tk):
             try:
                 img = _load_img(src)
                 img = _fit_to_canvas(img, THUMB_W, THUMB_H)
+                converted["img"] = img
+                # 미리보기 갱신
+                disp = img.resize((THUMB_W*2, THUMB_H*2), Image.NEAREST)
+                ph = ImageTk.PhotoImage(disp)
+                preview_lbl.config(image=ph, text="")
+                preview_lbl._ph = ph
+                btn_save.config(state="normal")
+                status_lbl.config(text="✓ 변환 완료. 저장 버튼을 눌러주세요.",
+                                   fg="#1D9E75")
+            except Exception as e:
+                status_lbl.config(text=f"오류: {e}", fg=DANGER)
+                converted["img"] = None
+                btn_save.config(state="disabled")
 
-                # 저장 경로: 게임 폴더 / custom_thumb.bmp
-                out_path = os.path.join(g['path'], "custom_thumb.bmp")
-                img.save(out_path, "BMP")
+        def save():
+            if not converted["img"]:
+                return
+            out_path = os.path.join(g['path'], "custom_thumb.bmp")
+            try:
+                converted["img"].save(out_path, "BMP")
                 g['thumb'] = True
                 for game in self.all_games:
                     if game['name'] == g['name']:
@@ -1017,16 +1036,36 @@ class App(tk.Tk):
                 win.destroy()
                 messagebox.showinfo("완료", f"썸네일 저장:\n{out_path}")
             except Exception as e:
-                messagebox.showerror("변환 실패", str(e), parent=win)
+                messagebox.showerror("저장 실패", str(e), parent=win)
 
-        tk.Button(btn_frame, text="변환 후 저장",
-                  command=convert, font=("Segoe UI", 11, "bold"),
-                  bg=ACCENT, fg="white", relief="flat",
-                  padx=16, pady=6, cursor="hand2").pack(side="left", padx=6)
+        # Enter 키 → 변환
+        entry.bind("<Return>", lambda e: convert_preview())
+        entry.focus_set()
+
+        # 상태 메시지
+        status_lbl = tk.Label(win, text="", bg=PANEL, fg=MUTED,
+                              font=("Segoe UI", 9))
+        status_lbl.pack(pady=(4, 0))
+
+        # 버튼 영역
+        btn_frame = tk.Frame(win, bg=PANEL)
+        btn_frame.pack(pady=10)
+
+        tk.Button(btn_frame, text="변환 (미리보기)",
+                  command=convert_preview, font=("Segoe UI", 11),
+                  bg="#F0EFEB", relief="solid", bd=1,
+                  padx=12, pady=6, cursor="hand2").pack(side="left", padx=4)
+
+        btn_save = tk.Button(btn_frame, text="저장",
+                             command=save, font=("Segoe UI", 11, "bold"),
+                             bg=ACCENT, fg="white", relief="flat",
+                             padx=16, pady=6, cursor="hand2", state="disabled")
+        btn_save.pack(side="left", padx=4)
+
         tk.Button(btn_frame, text="취소",
                   command=win.destroy, font=("Segoe UI", 11),
                   relief="solid", bd=1,
-                  padx=12, pady=6).pack(side="left")
+                  padx=12, pady=6).pack(side="left", padx=4)
 
 
     # ── 즐겨찾기 저장/로드 ──────────────────────────────────
