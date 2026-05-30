@@ -1,0 +1,22 @@
+# 로컬 설정 파일
+.psio_genres.json
+.psio_favs.json
+.psio_manager.json
+
+# output 폴더
+output/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
