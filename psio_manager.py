@@ -944,10 +944,20 @@ class App(tk.Tk):
         THUMB_W, THUMB_H = 80, 84
 
         def _load_img(src):
-            import io as _io
+            import io as _io, ssl
+            src = src.strip().strip('"').strip("'")
             if src.startswith("http"):
-                with urllib.request.urlopen(src, timeout=8) as r:
-                    return Image.open(_io.BytesIO(r.read())).copy()
+                req = urllib.request.Request(src, headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                                  "AppleWebKit/537.36 Chrome/120.0 Safari/537.36",
+                    "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
+                })
+                ctx = ssl.create_default_context()
+                ctx.check_hostname = False
+                ctx.verify_mode = ssl.CERT_NONE
+                with urllib.request.urlopen(req, timeout=10, context=ctx) as r:
+                    data = r.read()
+                return Image.open(_io.BytesIO(data)).copy()
             return Image.open(src)
 
         def _fit_to_canvas(img, W, H):
@@ -1002,9 +1012,9 @@ class App(tk.Tk):
                 for game in self.all_games:
                     if game['name'] == g['name']:
                         game['thumb'] = True
-                win.destroy()
                 self._refresh()
                 self._show_thumb(g['row_id'])
+                win.destroy()
                 messagebox.showinfo("완료", f"썸네일 저장:\n{out_path}")
             except Exception as e:
                 messagebox.showerror("변환 실패", str(e), parent=win)
