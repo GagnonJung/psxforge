@@ -964,16 +964,19 @@ class App(tk.Tk):
             return Image.open(src)
 
         def _fit_to_canvas(img, W, H):
-            """Cover 방식: W,H를 꽉 채우도록 비율 유지 스케일 후 중앙 크롭."""
+            """폭 맞춤: W 기준 비율 유지 스케일, 높이 부족 시 검정 패딩."""
             img = img.convert("RGB")
             w_i, h_i = img.size
-            scale = max(W / w_i, H / h_i)
-            new_w = round(w_i * scale)
+            scale = W / w_i
             new_h = round(h_i * scale)
-            img = img.resize((new_w, new_h), Image.LANCZOS)
-            left = (new_w - W) // 2
-            top  = (new_h - H) // 2
-            return img.crop((left, top, left + W, top + H))
+            img = img.resize((W, new_h), Image.LANCZOS)
+            canvas = Image.new("RGB", (W, H), (0, 0, 0))
+            if new_h <= H:
+                canvas.paste(img, (0, (H - new_h) // 2))
+            else:
+                top = (new_h - H) // 2
+                canvas.paste(img.crop((0, top, W, top + H)), (0, 0))
+            return canvas
 
         # 미리보기 (2배 확대 표시)
         preview_lbl = tk.Label(win, bg="#000000", width=THUMB_W*2, height=THUMB_H*2,
