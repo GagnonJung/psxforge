@@ -476,7 +476,9 @@ class App(tk.Tk):
     # ── 소스 열기 ────────────────────────────────────────────
 
     def _open_src(self):
-        folder = filedialog.askdirectory(title="소스 폴더 선택")
+        folder = filedialog.askdirectory(
+            title="소스 폴더 선택",
+            initialdir=self.src_folder.get() or os.path.expanduser("~"))
         if not folder: return
         self.src_folder.set(folder)
         self._save_config()
@@ -521,7 +523,9 @@ class App(tk.Tk):
         messagebox.showinfo("로드 완료", f"{len(games)}개 게임을 불러왔습니다.")
 
     def _open_dst(self):
-        f = filedialog.askdirectory(title="대상 폴더 선택")
+        f = filedialog.askdirectory(
+            title="대상 폴더 선택",
+            initialdir=self.dst_folder.get() or os.path.expanduser("~"))
         if f:
             self.dst_folder.set(f)
             self._save_config()
