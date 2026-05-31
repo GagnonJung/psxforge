@@ -554,13 +554,9 @@ def main():
     print(f"루트 폴더: {root}")
     print("=" * 60)
 
-    # [1] output 초기화
-    if os.path.isdir(output_base):
-        print("\n[1] 기존 output 폴더 삭제 중...")
-        shutil.rmtree(output_base)
-        print("  ✅ 삭제 완료")
-    os.makedirs(output_base)
-    print(f"  output 폴더 생성: {output_base}")
+    # [1] output 폴더 준비 (삭제 없이 유지)
+    os.makedirs(output_base, exist_ok=True)
+    print(f"\n[1] output 폴더: {output_base}")
 
     # [2] 원본 스캔 및 그룹화
     print("\n[2] 원본 스캔 및 그룹화")
@@ -573,10 +569,15 @@ def main():
         for src in src_paths:
             print(f"       <- {os.path.basename(src)}")
 
-    # [3] output 에 복사
+    # [3] output 에 복사 (이미 있는 폴더는 스킵)
     print("\n[3] output/ 에 복사 및 변환")
-    merged_count = copied_count = error_count = 0
+    merged_count = copied_count = skipped_count = error_count = 0
     for dest_name, src_paths in groups:
+        dest_dir = os.path.join(output_base, dest_name)
+        if os.path.isdir(dest_dir):
+            print(f"  ⏭  이미 존재, 건너뜀: {dest_name}")
+            skipped_count += 1
+            continue
         print(f"  처리 중: {dest_name}")
         try:
             result = process_group(dest_name, src_paths, output_base)
@@ -590,7 +591,8 @@ def main():
         else:
             print(f"    📋 그대로 복사")
             copied_count += 1
-    print(f"\n  결과: cu2 생성 {merged_count}개 / 복사 {copied_count}개 / 오류 {error_count}개")
+    print(f"\n  결과: cu2 생성 {merged_count}개 / 복사 {copied_count}개 "
+          f"/ 기존 {skipped_count}개 / 오류 {error_count}개")
 
     # [4] MULTIDISC.LST
     print("\n[4] MULTIDISC.LST 생성")
