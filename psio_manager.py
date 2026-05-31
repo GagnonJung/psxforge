@@ -342,11 +342,13 @@ class App(tk.Tk):
             else:
                 self.tree.column(cid, stretch=True, anchor=anchor)
 
-        self.tree.tag_configure("sel",     background="#E3F0FC")
-        self.tree.tag_configure("fav",     background="#FFFBEA", foreground="#7A5800")
-        self.tree.tag_configure("fav_sel", background="#FFF3C4", foreground="#7A5800")
-        self.tree.tag_configure("odd",     background="#FAFAF8")
-        self.tree.tag_configure("even",    background=PANEL)
+        self.tree.tag_configure("sel",      background="#E3F0FC")
+        self.tree.tag_configure("fav",      background="#FFFBEA", foreground="#7A5800")
+        self.tree.tag_configure("fav_sel",  background="#FFF3C4", foreground="#7A5800")
+        self.tree.tag_configure("odd",      background="#FAFAF8")
+        self.tree.tag_configure("even",     background=PANEL)
+        self.tree.tag_configure("exist",    background="#F0F0F0", foreground="#999999")
+        self.tree.tag_configure("exist_sel",background="#D8EAD8", foreground="#2D6A2D")
 
         vsb = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscrollcommand=vsb.set)
@@ -499,12 +501,14 @@ class App(tk.Tk):
 
     def _scan_done(self, games):
         self.all_games = games
-        # flag 필드 누락 방어
+        # 필드 누락 방어
         for g in self.all_games:
             if 'flag' not in g:
                 g['flag'] = get_flag(g.get('name', ''))
             if 'fav' not in g:
                 g['fav'] = False
+            if 'exist' not in g:
+                g['exist'] = False
         self._bar_show(self.scan_bar, False)
         self._load_genres()
         self._load_favs()
@@ -514,6 +518,7 @@ class App(tk.Tk):
         if dst and os.path.isdir(dst):
             self._sync_existing(dst)
         self._st(f"{len(games)}개 게임 로드됨.")
+        messagebox.showinfo("로드 완료", f"{len(games)}개 게임을 불러왔습니다.")
 
     def _open_dst(self):
         f = filedialog.askdirectory(title="대상 폴더 선택")
@@ -572,16 +577,23 @@ class App(tk.Tk):
                 display = f"{g['name']}  —  Disc {g['disc_index']}/{g['discs']}"
             else:
                 display = g['name']
+            exist = g.get('exist', False)
             if g['fav'] and rid in self.selected:
                 tag = "fav_sel"
             elif g['fav']:
                 tag = "fav"
+            elif rid in self.selected and exist:
+                tag = "exist_sel"
+            elif exist:
+                tag = "exist"
             elif rid in self.selected:
                 tag = "sel"
             else:
                 tag = "odd" if i % 2 else "even"
+            # 이미 있는 게임은 체크박스 대신 📥 아이콘으로 표시
+            chk_display = "📥" if exist else chk
             self.tree.insert("", "end", iid=rid, tags=(tag,),
-                             values=(fav, g.get('flag','🌐'), chk, display, g['genre'],
+                             values=(fav, g.get('flag','🌐'), chk_display, display, g['genre'],
                                      g['serial'], g['disc_index'], g['size_str'], thumb))
         self.lbl_count.config(text=f"게임 {len(self.filtered)}개")
 
@@ -672,7 +684,7 @@ class App(tk.Tk):
         self.btn_copy.config(state="normal" if has else "disabled")
 
     def _sync_existing(self, dst: str):
-        """대상 폴더에 이미 존재하는 게임을 자동으로 선택 표시."""
+        """대상 폴더에 이미 존재하는 게임을 exist 플래그로 표시 (선택과 분리)."""
         if not self.all_games:
             return
         try:
@@ -681,13 +693,12 @@ class App(tk.Tk):
             return
         changed = False
         for g in self.all_games:
-            if g['name'] in existing:
-                if g['row_id'] not in self.selected:
-                    self.selected.add(g['row_id'])
-                    changed = True
+            was = g.get('exist', False)
+            g['exist'] = g['name'] in existing
+            if g['exist'] != was:
+                changed = True
         if changed:
             self._refresh()
-            self._update_sel()
 
     # ── 썸네일 다운로드 ──────────────────────────────────────
 
