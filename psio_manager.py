@@ -327,12 +327,12 @@ class App(tk.Tk):
         tree_frame = tk.Frame(mid, bg=BG)
         tree_frame.pack(side="left", fill="both", expand=True)
 
-        cols = ("fav","flag","chk","name","genre","serial","discs","size","thumb")
+        cols = ("fav","exist","flag","chk","name","genre","serial","discs","size","thumb")
         self.tree = ttk.Treeview(tree_frame, columns=cols, show="headings",
                                  selectmode="none")
-        hdrs = [("fav","★",28),("flag","",32),("chk","",28),("name","게임명",0),
-                ("genre","장르",70),("serial","시리얼",90),("discs","💿",38),
-                ("size","용량",72),("thumb","🖼",30)]
+        hdrs = [("fav","★",28),("exist","📥",28),("flag","",32),("chk","",28),
+                ("name","게임명",0),("genre","장르",70),("serial","시리얼",90),
+                ("discs","💿",38),("size","용량",72),("thumb","🖼",30)]
         for cid, text, w in hdrs:
             self.tree.heading(cid, text=text,
                               command=lambda c=cid: self._sort(c))
@@ -511,6 +511,8 @@ class App(tk.Tk):
                 g['fav'] = False
             if 'exist' not in g:
                 g['exist'] = False
+            if 'exist' not in g:
+                g['exist'] = False
         self._bar_show(self.scan_bar, False)
         self._load_genres()
         self._load_favs()
@@ -582,6 +584,7 @@ class App(tk.Tk):
             else:
                 display = g['name']
             exist = g.get('exist', False)
+            exist_icon = "📥" if exist else ""
             if g['fav'] and rid in self.selected:
                 tag = "fav_sel"
             elif g['fav']:
@@ -594,11 +597,10 @@ class App(tk.Tk):
                 tag = "sel"
             else:
                 tag = "odd" if i % 2 else "even"
-            # 이미 있는 게임은 체크박스 대신 📥 아이콘으로 표시
-            chk_display = "📥" if exist else chk
             self.tree.insert("", "end", iid=rid, tags=(tag,),
-                             values=(fav, g.get('flag','🌐'), chk_display, display, g['genre'],
-                                     g['serial'], g['disc_index'], g['size_str'], thumb))
+                             values=(fav, exist_icon, g.get('flag','🌐'), chk,
+                                     display, g['genre'], g['serial'],
+                                     g['disc_index'], g['size_str'], thumb))
         self.lbl_count.config(text=f"게임 {len(self.filtered)}개")
 
     # ── 선택 ────────────────────────────────────────────────
@@ -617,6 +619,10 @@ class App(tk.Tk):
                     game['fav'] = g['fav']
             self._save_favs()
             self._refresh()
+            return
+        # 📥 컬럼(#2) → 대상 폴더에서 삭제
+        if col == "#2" and g.get('exist', False):
+            self._delete_from_dst(g)
             return
         # 장르 컬럼(#4) 더블클릭 → 직접 편집 (_dbl_click에서 처리)
         if item in self.selected:
@@ -686,6 +692,36 @@ class App(tk.Tk):
         self._sync_existing(dst)
         has = bool(self.selected) and bool(self.dst_folder.get())
         self.btn_copy.config(state="normal" if has else "disabled")
+
+
+    def _delete_from_dst(self, g: dict):
+        """대상 폴더에서 게임 폴더 삭제 후 exist 플래그 해제."""
+        dst = self.dst_folder.get()
+        if not dst or not os.path.isdir(dst):
+            messagebox.showerror("오류", "대상 폴더가 설정되지 않았습니다.")
+            return
+        dst_game = os.path.join(dst, g['name'])
+        if not os.path.isdir(dst_game):
+            for game in self.all_games:
+                if game['name'] == g['name']:
+                    game['exist'] = False
+            self._refresh()
+            return
+        if not messagebox.askyesno(
+            "삭제 확인",
+            f"대상 폴더에서 삭제하시겠습니까?\n\n{g['name']}\n\n이 작업은 되돌릴 수 없습니다."
+        ):
+            return
+        try:
+            shutil.rmtree(dst_game)
+            for game in self.all_games:
+                if game['name'] == g['name']:
+                    game['exist'] = False
+            self._refresh()
+            self._dst_info()
+            self._st(f"삭제 완료: {g['name']}")
+        except Exception as e:
+            messagebox.showerror("삭제 실패", str(e))
 
     def _sync_existing(self, dst: str):
         """대상 폴더에 이미 존재하는 게임을 exist 플래그로 표시 (선택과 분리)."""
@@ -858,7 +894,7 @@ class App(tk.Tk):
         if not item: return
         g = next((x for x in self.filtered if x['row_id'] == item), None)
         if not g: return
-        if col == "#5":  # 장르 컬럼
+        if col == "#6":  # 장르 컬럼
             self._edit_genre(item, g)
 
     def _edit_genre(self, row_id: str, g: dict):

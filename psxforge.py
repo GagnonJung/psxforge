@@ -322,113 +322,143 @@ def copy_non_bin_cue_files(src_folder: str, dest_dir: str):
 def process_group(dest_name: str, src_paths: list[str], output_base: str):
     """
     (dest_name, src_paths) 하나를 처리해서 output_base/dest_name/ 에 저장.
+
+    - src_paths가 1개: 싱글 디스크 → 그대로 처리
+    - src_paths가 여러 개: 멀티 디스크 폴더 →
+        각 디스크를 독립적으로 처리해서 대표 폴더에 모으고 MULTIDISC.LST 생성
     반환: 'merged' | 'copied' | 'skipped'
     """
     dest_dir = os.path.join(output_base, dest_name)
-
-    # 모든 원본 폴더에서 cue 파일 수집
-    all_cues = []
-    for src in src_paths:
-        for fname in sorted(os.listdir(src)):
-            if fname.lower().endswith('.cue'):
-                all_cues.append(os.path.join(src, fname))
-
-    if not all_cues:
-        # cue 없으면 그냥 복사
-        for src in src_paths:
-            shutil.copytree(src, dest_dir, dirs_exist_ok=True)
-        return 'copied'
-
-    # 전체 트랙 수 파악 (여러 cue가 있으면 합산)
-    total_tracks = 0
-    for cue_path in all_cues:
-        _, tracks = parse_cue(cue_path)
-        total_tracks += len(tracks)
-
-    if total_tracks < 2:
-        # 싱글 트랙 → 복사 (파일명 약어 정규화 포함)
-        for src in src_paths:
-            for fname in os.listdir(src):
-                fpath = os.path.join(src, fname)
-                if not os.path.isfile(fpath):
-                    continue
-                new_fname = expand_region_abbr(fname)
-                os.makedirs(dest_dir, exist_ok=True)
-                dst = os.path.join(dest_dir, new_fname)
-                shutil.copy2(fpath, dst)
-                # cue 내부 참조도 수정
-                if new_fname.lower().endswith('.cue'):
-                    with open(dst, 'r', encoding='utf-8-sig', errors='replace') as f:
-                        cue_content = f.read()
-                    new_cue = re.sub(
-                        r'(FILE\s+["\'])([^"\']+)(["\'])',
-                        lambda m: f'{m.group(1)}{expand_region_abbr(m.group(2))}{m.group(3)}',
-                        cue_content, flags=re.IGNORECASE
-                    )
-                    if new_cue != cue_content:
-                        with open(dst, 'w', encoding='utf-8') as f:
-                            f.write(new_cue)
-        return 'copied'
-
-    # 멀티 트랙 → bin 병합 + cu2 생성
     os.makedirs(dest_dir, exist_ok=True)
 
-    # 대표 cue (첫 번째)
-    main_cue = all_cues[0]
-    cue_stem = os.path.splitext(os.path.basename(main_cue))[0]
-    # 출력 파일명은 dest_name 기준으로
-    out_stem        = dest_name
-    merged_bin_name = out_stem + '.bin'
+    # ── 멀티 디스크 폴더 (src_paths >= 2) ──────────────────
+    if len(src_paths) >= 2:
+        cue_names = []
+        for src in src_paths:
+            cues = sorted(f for f in os.listdir(src) if f.lower().endswith('.cue'))
+            if not cues:
+                # cue 없으면 그냥 복사
+                for fname in os.listdir(src):
+                    fpath = os.path.join(src, fname)
+                    if os.path.isfile(fpath):
+                        shutil.copy2(fpath, os.path.join(dest_dir, fname))
+                continue
+
+            cue_path = os.path.join(src, cues[0])
+            bin_files, tracks = parse_cue(cue_path)
+            cue_stem = os.path.splitext(cues[0])[0]
+
+            if len(tracks) >= 2:
+                # 멀티 트랙: bin 병합 + cu2 생성
+                merged_bin_name = cue_stem + '.bin'
+                merged_bin_path = os.path.join(dest_dir, merged_bin_name)
+
+                if len(bin_files) <= 1:
+                    src_bin = os.path.join(src, bin_files[0]) if bin_files else None
+                    if src_bin and os.path.exists(src_bin):
+                        shutil.copy2(src_bin, merged_bin_path)
+                else:
+                    merge_bins(cue_path, merged_bin_path)
+
+                # 단일 bin 참조 cue 생성
+                write_merged_cue(cue_path, dest_dir, merged_bin_name)
+
+                # cu2 생성
+                out_cue_path = os.path.join(dest_dir, cue_stem + '.cue')
+                cu2_content = generate_cu2(out_cue_path, merged_bin_path)
+                with open(os.path.join(dest_dir, cue_stem + '.cu2'), 'w', encoding='utf-8') as f:
+                    f.write(cu2_content)
+                cue_names.append(cue_stem + '.cue')
+            else:
+                # 싱글 트랙: 파일명 약어 정규화 후 복사
+                for fname in os.listdir(src):
+                    fpath = os.path.join(src, fname)
+                    if not os.path.isfile(fpath):
+                        continue
+                    new_fname = expand_region_abbr(fname)
+                    dst = os.path.join(dest_dir, new_fname)
+                    shutil.copy2(fpath, dst)
+                    if new_fname.lower().endswith('.cue'):
+                        with open(dst, 'r', encoding='utf-8-sig', errors='replace') as f:
+                            cue_content = f.read()
+                        new_cue = re.sub(
+                            r'(FILE\s+["\'])([^"\']+)(["\'])',
+                            lambda m: f'{m.group(1)}{expand_region_abbr(m.group(2))}{m.group(3)}',
+                            cue_content, flags=re.IGNORECASE
+                        )
+                        if new_cue != cue_content:
+                            with open(dst, 'w', encoding='utf-8') as f:
+                                f.write(new_cue)
+                        cue_names.append(new_fname)
+
+            # bmp 등 나머지 파일 복사
+            copy_non_bin_cue_files(src, dest_dir)
+
+        # MULTIDISC.LST 생성
+        if cue_names:
+            lst_path = os.path.join(dest_dir, 'MULTIDISC.LST')
+            with open(lst_path, 'w', encoding='utf-8') as f:
+                f.write('\n'.join(cue_names) + '\n')
+
+        return 'merged'
+
+    # ── 싱글 디스크 (src_paths == 1) ───────────────────────
+    src = src_paths[0]
+    all_cues = sorted(f for f in os.listdir(src) if f.lower().endswith('.cue'))
+
+    if not all_cues:
+        for fname in os.listdir(src):
+            fpath = os.path.join(src, fname)
+            if os.path.isfile(fpath):
+                shutil.copy2(fpath, os.path.join(dest_dir, fname))
+        return 'copied'
+
+    cue_path = os.path.join(src, all_cues[0])
+    bin_files, tracks = parse_cue(cue_path)
+
+    if len(tracks) < 2:
+        # 싱글 트랙 → 그대로 복사
+        for fname in os.listdir(src):
+            fpath = os.path.join(src, fname)
+            if not os.path.isfile(fpath):
+                continue
+            new_fname = expand_region_abbr(fname)
+            dst = os.path.join(dest_dir, new_fname)
+            shutil.copy2(fpath, dst)
+            if new_fname.lower().endswith('.cue'):
+                with open(dst, 'r', encoding='utf-8-sig', errors='replace') as f:
+                    cue_content = f.read()
+                new_cue = re.sub(
+                    r'(FILE\s+["\'])([^"\']+)(["\'])',
+                    lambda m: f'{m.group(1)}{expand_region_abbr(m.group(2))}{m.group(3)}',
+                    cue_content, flags=re.IGNORECASE
+                )
+                if new_cue != cue_content:
+                    with open(dst, 'w', encoding='utf-8') as f:
+                        f.write(new_cue)
+        return 'copied'
+
+    # 멀티 트랙 싱글 디스크 → bin 병합 + cu2 생성
+    cue_stem        = os.path.splitext(all_cues[0])[0]
+    merged_bin_name = cue_stem + '.bin'
     merged_bin_path = os.path.join(dest_dir, merged_bin_name)
 
-    # bin 파일 수집 (모든 원본 폴더에서)
-    all_bin_files = []
-    for cue_path in all_cues:
-        cue_dir   = os.path.dirname(cue_path)
-        bin_files, _ = parse_cue(cue_path)
-        for bf in bin_files:
-            src_bin = os.path.join(cue_dir, bf)
-            if os.path.exists(src_bin):
-                all_bin_files.append(src_bin)
-
-    if not all_bin_files:
-        raise FileNotFoundError(f"bin 파일 없음: {dest_name}")
-
-    # bin 병합 (하나면 복사, 여러 개면 병합)
-    if len(all_bin_files) == 1:
-        shutil.copy2(all_bin_files[0], merged_bin_path)
+    if len(bin_files) <= 1:
+        src_bin = os.path.join(src, bin_files[0]) if bin_files else None
+        if src_bin and os.path.exists(src_bin):
+            shutil.copy2(src_bin, merged_bin_path)
+        else:
+            raise FileNotFoundError(f"bin 파일 없음: {src}")
     else:
-        with open(merged_bin_path, 'wb') as out:
-            for src_bin in all_bin_files:
-                with open(src_bin, 'rb') as inp:
-                    shutil.copyfileobj(inp, out)
+        merge_bins(cue_path, merged_bin_path)
 
-    # cue 생성 (dest_name 기준으로 파일명 통일)
-    out_cue_path = os.path.join(dest_dir, out_stem + '.cue')
-    with open(out_cue_path, 'w', encoding='utf-8') as f:
-        # 첫 번째 cue의 TRACK/INDEX 구조 사용, FILE 라인만 교체
-        _, tracks_0 = parse_cue(main_cue)
-        # 모든 cue의 트랙 합산
-        all_tracks = []
-        for cue_path in all_cues:
-            _, trks = parse_cue(cue_path)
-            all_tracks.extend(trks)
+    write_merged_cue(cue_path, dest_dir, merged_bin_name)
 
-        f.write(f'FILE "{merged_bin_name}" BINARY\r\n')
-        for track in all_tracks:
-            f.write(f'  TRACK {track["id"]:02d} {track["type"]}\r\n')
-            for idx in track['indexes']:
-                f.write(f'    INDEX {idx["id"]:02d} {idx["stamp"]}\r\n')
-
-    # cu2 생성
-    cu2_content = generate_cu2(out_cue_path, merged_bin_path)
-    with open(os.path.join(dest_dir, out_stem + '.cu2'), 'w', encoding='utf-8') as f:
+    cu2_content = generate_cu2(os.path.join(dest_dir, cue_stem + '.cue'), merged_bin_path)
+    with open(os.path.join(dest_dir, cue_stem + '.cu2'), 'w', encoding='utf-8') as f:
         f.write(cu2_content)
 
-    # bmp 등 나머지 파일 복사
-    for src in src_paths:
-        copy_non_bin_cue_files(src, dest_dir)
-
+    copy_non_bin_cue_files(src, dest_dir)
     return 'merged'
 
 
