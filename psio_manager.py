@@ -3,7 +3,7 @@ PSIO Game Manager
 사용법: python psio_manager.py
 """
 
-import os, re, sys, shutil, threading, urllib.request
+import os, re, sys, shutil, threading, urllib.request, webbrowser
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from PIL import Image, ImageTk   # pillow — 없으면 아래서 안내
@@ -57,6 +57,12 @@ def get_flag(name: str) -> str:
     except Exception:
         pass
     return '🌐'
+
+def clean_game_name(name: str) -> str:
+    """게임명에서 괄호 안 내용 제거 후 검색용 이름 반환.
+    예) Mobile Suit Z Gundam (Japan) (Disc 1) -> Mobile Suit Z Gundam"""
+    return re.sub(r'\s*[(\[].*?[)\]]', '', name).strip()
+
 
 GENRE_MAP = {
     'final fantasy':'RPG','dragon quest':'RPG','chrono':'RPG','xenogears':'RPG',
@@ -469,6 +475,7 @@ class App(tk.Tk):
     def _bind(self):
         self.tree.bind("<Button-1>",         self._click)
         self.tree.bind("<Double-Button-1>",  self._dbl_click)
+        self.tree.bind("<Button-3>",         self._right_click)
         self.tree.bind("<<TreeviewSelect>>", lambda e: None)
         self.search_var.trace_add("write",   lambda *_: self._filter())
         self.dst_folder.trace_add("write",   lambda *_: self._dst_info())
@@ -887,6 +894,45 @@ class App(tk.Tk):
 
     # ── 장르 직접 편집 ───────────────────────────────────────
 
+
+
+    def _right_click(self, event):
+        """우클릭 → 컨텍스트 메뉴."""
+        item = self.tree.identify_row(event.y)
+        if not item:
+            return
+        g = next((x for x in self.filtered if x['row_id'] == item), None)
+        if not g:
+            return
+        # 컨텍스트 메뉴 생성
+        menu = tk.Menu(self, tearoff=0)
+        menu.add_command(
+            label=f"🔍 커버 이미지 검색: {g['name'][:30]}",
+            command=lambda: self._search_cover(g)
+        )
+        menu.add_separator()
+        menu.add_command(
+            label="🖼 썸네일 직접 생성",
+            command=self._make_thumb
+        )
+        try:
+            menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            menu.grab_release()
+
+    def _search_cover(self, g: dict):
+        """게임명 + 지역 + Cover 키워드로 구글 이미지 검색."""
+        import urllib.parse
+        # 괄호 제거한 게임명
+        base_name = clean_game_name(g['name'])
+        # 지역명 추출 (Japan, USA 등)
+        region_m = REGION_RE.search(g['name'])
+        region = region_m.group(1) if region_m else ''
+        # 검색어 조합
+        query = f"{base_name} {region} PSX cover".strip()
+        url = "https://www.google.com/search?tbm=isch&q=" + urllib.parse.quote(query)
+        webbrowser.open(url)
+        self._st(f"브라우저 열기: {query}")
 
     def _dbl_click(self, event):
         item = self.tree.identify_row(event.y)
