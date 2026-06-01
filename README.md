@@ -33,7 +33,10 @@ python psxforge.py /path/to/roms     # 경로 지정
    - 레거시 폴더명 수정 — `(2 Discs) Game (Japan)` → `Game (2 Discs) (Japan)`
    - 멀티 디스크 그룹화 — `(Disc 1)/`, `(Disc 2)/` → `(2 Discs)/`
 3. **output/ 에 복사 및 변환**
-   - 이미 output에 존재하는 폴더는 스킵
+   - 이미 output에 폴더가 있고 파일도 있으면 스킵
+   - output에 폴더가 있어도 비어있으면 재처리
+   - bin/cue 없는 폴더는 스킵
+   - 멀티 디스크 폴더: 각 디스크를 독립적으로 처리 후 대표 폴더에 모으고 MULTIDISC.LST 생성
    - 멀티 트랙 cue: bin 병합 + cu2 생성
    - 싱글 트랙 cue: 그대로 복사 (파일명 약어 정규화 포함)
 4. **MULTIDISC.LST 생성** — 멀티 디스크 게임 목록 파일

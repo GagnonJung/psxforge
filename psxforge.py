@@ -146,18 +146,30 @@ def strip_disc(name: str):
 # [2] 원본 스캔 및 그룹화
 # ════════════════════════════════════════════════
 
+def has_game_files(path: str) -> bool:
+    """폴더에 bin 또는 cue 파일이 하나라도 있는지 확인."""
+    for fname in os.listdir(path):
+        if fname.lower().endswith(('.bin', '.cue')):
+            return True
+    return False
+
+
 def scan_source(parent: str) -> list[tuple[str, list[str]]]:
     """
     원본 폴더를 스캔해서 (출력폴더명, [원본폴더경로, ...]) 리스트를 반환.
+    - bin/cue 없는 빈 폴더는 스킵
     - 멀티 디스크 폴더는 하나의 그룹으로 묶임
     - 단일 폴더는 그대로
     - 폴더명은 normalize_folder_name 으로 정규화
     """
-    # 1단계: 모든 하위 폴더 수집
+    # 1단계: 모든 하위 폴더 수집 (빈 폴더 제외)
     entries = []
     for entry in os.listdir(parent):
         full_path = os.path.join(parent, entry)
         if not os.path.isdir(full_path) or entry == 'output':
+            continue
+        if not has_game_files(full_path):
+            print(f"  ⏭  bin/cue 없음, 건너뜀: {entry}")
             continue
         entries.append(entry)
 
@@ -605,9 +617,14 @@ def main():
     for dest_name, src_paths in groups:
         dest_dir = os.path.join(output_base, dest_name)
         if os.path.isdir(dest_dir):
-            print(f"  ⏭  이미 존재, 건너뜀: {dest_name}")
-            skipped_count += 1
-            continue
+            # 폴더가 있어도 비어있으면 다시 처리
+            if any(os.listdir(dest_dir)):
+                print(f"  ⏭  이미 존재, 건너뜀: {dest_name}")
+                skipped_count += 1
+                continue
+            else:
+                print(f"  🔄 빈 폴더 재처리: {dest_name}")
+                os.rmdir(dest_dir)
         print(f"  처리 중: {dest_name}")
         try:
             result = process_group(dest_name, src_paths, output_base)
