@@ -859,10 +859,25 @@ class App(tk.Tk):
             if g['name'] not in seen_b:
                 seen_b.add(g['name'])
                 total_b += g['size']
-        free    = shutil.disk_usage(dst).free
-        if total_b > free:
-            if not messagebox.askyesno("용량 부족",
-                f"선택 {fmt(total_b)} > 남은 공간 {fmt(free)}\n계속하시겠습니까?"):
+        free = shutil.disk_usage(dst).free
+        # 삭제 예정 용량 차감한 실질 필요 용량 계산
+        delete_b = sum(
+            folder_size(os.path.join(dst, g['name']))
+            for g in self.all_games
+            if g.get('exist', False)
+            and g['name'] not in selected_names
+            and g['name'] not in seen_b  # 이미 선택된 건 제외
+            and os.path.isdir(os.path.join(dst, g['name']))
+        )
+        net_needed = max(0, total_b - delete_b)
+        if net_needed > free:
+            if not messagebox.askyesno(
+                "용량 부족",
+                f"필요 공간:  {fmt(net_needed)}\n"
+                f"남은 공간: {fmt(free)}\n"
+                f"(삭제 예정 {fmt(delete_b)} 차감 후 기준)\n\n"
+                f"계속하시겠습니까?"
+            ):
                 return
 
         ow = [self.ow_all.get()]
