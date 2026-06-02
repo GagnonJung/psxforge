@@ -675,11 +675,21 @@ class App(tk.Tk):
 
     def _update_sel(self):
         sel = [g for g in self.all_games if g['row_id'] in self.selected]
-        total = sum(g['size'] for g in sel)
+        # 멀티 디스크는 폴더(name) 기준으로 중복 제거해서 실제 용량 계산
+        seen = set()
+        total = 0
+        for g in sel:
+            if g['name'] not in seen:
+                seen.add(g['name'])
+                total += folder_size(g['path'])
         self.lbl_sel.config(text=fmt(total))
         self.sel_box.delete(0, "end")
+        shown = set()
         for g in sorted(sel, key=lambda x: x['name']):
-            self.sel_box.insert("end", f"{g['name'][:30]}  {g['size_str']}")
+            if g['name'] not in shown:
+                shown.add(g['name'])
+                sz = folder_size(g['path'])
+                self.sel_box.insert("end", f"{g['name'][:30]}  {fmt(sz)}")
         has = bool(sel) and bool(self.dst_folder.get())
         self.btn_copy.config(state="normal" if has else "disabled")
         self._dst_info()
@@ -883,13 +893,14 @@ class App(tk.Tk):
 
     def _bar_show(self, bar, show):
         if show:
-            self.inline_bar_label.config(fg=bar["color"])
+            self.inline_bar_label.config(fg=bar["color"], text=bar["prefix"])
             self.inline_bar_prog.config(style="TProgressbar")
             bar["pv"].set(0)
-            bar["lbl"].config(text=bar["prefix"])
+            self.inline_bar_frame.pack(side="right", padx=8, pady=10)
         else:
             bar["pv"].set(0)
             bar["lbl"].config(text="")
+            self.inline_bar_frame.pack_forget()
 
 
     # ── 장르 직접 편집 ───────────────────────────────────────
