@@ -154,7 +154,7 @@ def scan_games(folder):
                 if not os.path.exists(bin_path) and bins:
                     bin_path = os.path.join(path, bins[0])
                 serial = get_serial(bin_path) if os.path.exists(bin_path) else None
-                size   = folder_size(path) // len(cues)
+                size   = folder_size(path)
                 yield i, total, {
                     'name':       entry,
                     'path':       path,
@@ -792,11 +792,51 @@ class App(tk.Tk):
         if not dst or not os.path.isdir(dst):
             messagebox.showerror("오류", "대상 폴더가 올바르지 않습니다."); return
 
-        sel = [g for g in self.all_games if g['row_id'] in self.selected]
-        if not sel: return
+        sel_rows = [g for g in self.all_games if g['row_id'] in self.selected]
+        if not sel_rows: return
 
         # 복사 전 exist 플래그 최신화
         self._sync_existing(dst)
+
+        # 멀티 디스크 중복 제거 — name 기준으로 폴더당 한 번만 처리
+        seen_names = set()
+        sel = []
+        for g in sel_rows:
+            if g['name'] not in seen_names:
+                seen_names.add(g['name'])
+                sel.append(g)
+
+        # 선택 안 됨 + SD에 있음 → 삭제
+        selected_names = {g['name'] for g in sel}
+        to_delete = []
+        seen_del = set()
+        for g in self.all_games:
+            if (g['name'] not in selected_names
+                    and g.get('exist', False)
+                    and g['name'] not in seen_del):
+                seen_del.add(g['name'])
+                to_delete.append(g)
+
+        if to_delete:
+            del_names = "\n".join(f"  • {g['name']}" for g in to_delete[:10])
+            if len(to_delete) > 10:
+                del_names += f"\n  ... 외 {len(to_delete)-10}개"
+            if not messagebox.askyesno(
+                "SD카드에서 삭제",
+                f"선택하지 않은 게임 {len(to_delete)}개를 SD카드에서 삭제합니다:\n\n{del_names}\n\n계속하시겠습니까?"
+            ):
+                to_delete = []
+
+            for g in to_delete:
+                dst_game = os.path.join(dst, g['name'])
+                try:
+                    shutil.rmtree(dst_game)
+                    for game in self.all_games:
+                        if game['name'] == g['name']:
+                            game['exist'] = False
+                    self._st(f"삭제: {g['name']}")
+                except Exception as e:
+                    messagebox.showerror("삭제 실패", str(e))
 
         # 이미 있는 게임 제외 옵션
         if self.skip_existing.get():
@@ -812,7 +852,13 @@ class App(tk.Tk):
                 messagebox.showinfo("전송", "전송할 게임이 없습니다.\n(모두 대상 폴더에 이미 존재)")
                 return
 
-        total_b = sum(g['size'] for g in sel)
+        # name 기준 중복 제거로 실제 용량 계산
+        seen_b = set()
+        total_b = 0
+        for g in sel:
+            if g['name'] not in seen_b:
+                seen_b.add(g['name'])
+                total_b += g['size']
         free    = shutil.disk_usage(dst).free
         if total_b > free:
             if not messagebox.askyesno("용량 부족",
@@ -853,7 +899,7 @@ class App(tk.Tk):
                     if not ow[0]:
                         ans = self._ask_ow(g['name'])
                         if ans == "skip":
-                            done_b[0] += g['size']; skip += 1; continue
+                            done_b[0] += folder_size(g['path']); skip += 1; continue
                         elif ans == "all": ow[0] = True
                     try: shutil.rmtree(dp)
                     except: fail += 1; continue
@@ -1267,8 +1313,9 @@ class App(tk.Tk):
         for g in self.all_games:
             if g['name'] not in seen:
                 seen.add(g['name'])
-                total_size = sum(x['size'] for x in game_groups[g['name']])
-                games_list.append({'name': g['name'], 'size': total_size,
+                # 폴더 실제 크기 (멀티디스크도 폴더는 하나)
+                actual_size = folder_size(g['path'])
+                games_list.append({'name': g['name'], 'size': actual_size,
                                    'rows': game_groups[g['name']]})
 
         random.shuffle(games_list)
