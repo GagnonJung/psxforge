@@ -795,6 +795,9 @@ class App(tk.Tk):
         sel = [g for g in self.all_games if g['row_id'] in self.selected]
         if not sel: return
 
+        # 복사 전 exist 플래그 최신화
+        self._sync_existing(dst)
+
         # 이미 있는 게임 제외 옵션
         if self.skip_existing.get():
             try:
